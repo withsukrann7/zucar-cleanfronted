@@ -7,7 +7,7 @@ const boxes = [
   },
   {
     title: 'Tecrübe',
-    desc: "1990'dan beri süregelen tecrübemizle, binlerce araca estetik ve koruma kazandırıyoruz.",
+    desc: "2015'ten beri süregelen tecrübemizle, binlerce araca estetik ve koruma kazandırıyoruz.",
   },
   {
     title: 'Müşteri Memnuniyeti',

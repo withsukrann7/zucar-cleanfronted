@@ -235,7 +235,7 @@ const Hakkimizda: React.FC = () => {
             },
             {
               title: 'Tecrübe',
-              desc: "1990'dan beri süregelen tecrübemizle, binlerce araca estetik ve koruma kazandırarak sektörde fark yaratıyoruz.",
+              desc: "2015'ten beri süregelen tecrübemizle, binlerce araca estetik ve koruma kazandırarak sektörde fark yaratıyoruz.",
             },
             {
               title: 'Müşteri Memnuniyeti',
