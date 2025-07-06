@@ -87,28 +87,35 @@ const KodSorgulamaBox: React.FC = () => {
       return res.json() as Promise<unknown>;  /* ✅ fetch generic yok, assert var */
     })
     .then((raw) => {
+      const { islemler = [], plakaNo, garantiBaslangic, garantiBitis, notlar } = raw as any;
 
-      /* 2️⃣ islemler → kesin string[] yapıyoruz  */
-      const islemler: string[] = Array.isArray((raw as any).islemler)
-        ? (raw as any).islemler
-        : [];
-
-      /* 3️⃣ reduce çağrısı artık **typed** bir dizide yapılıyor       */
-      const details = islemler.reduce<Record<string, string>>((acc, islem) => {
-        acc[islem] = 'Yapıldı';
-        return acc;
-      }, {});
+      const details: Record<string, string> = {
+        ...(Array.isArray(islemler)
+          ? islemler.reduce<Record<string, string>>((acc, islem) => {
+              acc[islem] = 'Yapıldı';
+              return acc;
+            }, {})
+          : {}),
+        ...(plakaNo ? { 'Plaka': plakaNo } : {}),
+        ...(garantiBaslangic && garantiBitis
+          ? {
+              'Garanti Süresi': `${new Date(garantiBaslangic).toLocaleDateString('tr-TR')} → ${new Date(garantiBitis).toLocaleDateString('tr-TR')}`
+            }
+          : {}),
+        ...(notlar ? { 'Notlar': notlar } : {}),
+      };
 
       setResult({
         type: 'success',
         data: {
           status: 'success',
           title: 'Garanti Kayıtlı!',
-          message: 'Bu kod için kayıtlı işlemler:',
-          details,      // her zaman {} veya dolu obje
+          message: `${fullCode} numaralı kayıt bilgileri aşağıdaki gibidir.`,
+          details,
         },
       });
     })
+
     .catch((e: Error) => {
       err('Fetch error:', e.message);
       setResult({
@@ -200,7 +207,7 @@ const KodSorgulamaBox: React.FC = () => {
         <p>{message}</p>
         {entries.length > 0 && (
           <div className="result-details">
-            <h4>İşlem Detayları:</h4>
+            <h4 style={{ textAlign: 'center', fontSize: 18 }}>HİZMET DETAYLARI</h4>
             <ul>
               {entries.map(([k, v]) => (
                 <li key={k}>

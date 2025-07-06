@@ -2,43 +2,48 @@ import React, { useEffect, useState, ChangeEvent } from "react";
 import './AdminPanel.css'
 
 interface Kayit {
+  plakaNo: string;
+  garanti: {
+    baslangic: string;
+    bitis: string;
+  };
+  notlar: string;
   islemler: string[];
   tarih: string;
   custom?: boolean;
 }
 
 const initialServices = [
-  // "Araç Kaplama Hizmeti",
   "Cam Filmi Hizmeti",
   "Seramik Kaplama Hizmeti",
-  // "Boyasız Göçük Düzeltme",
   "PPF Kaplama Hizmeti",
   "Renk Değişim Hizmeti",
-  // "Kişiye Özel Tasarım",
 ];
 
 const AdminPanel: React.FC = () => {
-
-  const BASE_CODE_NUM = 2378561284420001n;          // 2378 5612 8442 0001
+  const BASE_CODE_NUM = 2378561284420001n;  // 2378 5612 8442 0001
   const BASE_CODE_FMT = "2378 5612 8442 0001";
   
-  /* ------------------------------ STATE ------------------------------ */
   const [token, setToken] = useState<string | null>(localStorage.getItem("adminToken"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const [code, setCode] = useState("");
-  const [isCustom, setIsCustom] = useState(false); 
+  const [isCustom, setIsCustom] = useState(false);
   const [services, setServices] = useState<string[]>(initialServices);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [newService, setNewService] = useState("");
   const [successVisible, setSuccessVisible] = useState(false);
   const [records, setRecords] = useState<[string, Kayit][]>([]);
   const [autoCodeInfo, setAutoCodeInfo] = useState<string>("");
-
   const [modalOpen, setModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
-  /* ------------------------------ HELPERS ------------------------------ */
+  const [plakaNo, setPlakaNo] = useState("");
+  const [garantiBaslangic, setGarantiBaslangic] = useState("");
+  const [garantiBitis, setGarantiBitis] = useState("");
+  const [notlar, setNotlar] = useState("");
+
   const bugunTarih = () => {
     return new Date().toLocaleDateString("tr-TR", {
       year: "numeric",
@@ -54,41 +59,31 @@ const AdminPanel: React.FC = () => {
     return onlyDigits.replace(/(.{4})/g, "$1 ").trim();
   };
 
-  /** Kayıtlar ve custom kodlara göre sıradaki otomatik kodu bulur */
   const calculateNextAuto = (entries: [string, Kayit][]) => {
-    /* 1) Hiç kayıt yoksa doğrudan BASE gönder */
     if (!entries.length) return BASE_CODE_FMT;
-
     const used = new Set(entries.map(([k]) => k.replace(/\s/g, "")));
-
-    /* 2) Otomatik (custom:false) kayıtların en büyüğünü bulalım */
     const lastAutoNumeric = entries
-      .filter(([, v]) => v.custom === false)    // sadece otomatikler
+      .filter(([, v]) => v.custom === false)
       .reduce<bigint>((max, [k]) => {
         const num = BigInt(k.replace(/\s/g, ""));
         return num > max ? num : max;
       }, 0n);
 
-    /* 3) Eğer henüz BASE altında kaldıysa BASE’ten başlat */
     let next = lastAutoNumeric >= BASE_CODE_NUM
       ? lastAutoNumeric + 1n
       : BASE_CODE_NUM;
 
-    /* 4) Çakışma var mı diye kontrol et, gerekirse ileri sar */
     while (used.has(next.toString().padStart(16, "0"))) next += 1n;
 
     return formatKod(next.toString().padStart(16, "0"));
   };
 
-
-  /* ------------------------------ EFFECTS ------------------------------ */
   useEffect(() => {
     if (token) {
       kayitlariGetir();
     }
   }, [token]);
 
-  /* ------------------------------ AUTH ------------------------------ */
   const loginAdmin = () => {
     fetch("https://zucar-backend-ndh4.onrender.com/login", {
       method: "POST",
@@ -115,7 +110,6 @@ const AdminPanel: React.FC = () => {
     setSelectedServices(new Set());
   };
 
-  /* ------------------------------ SERVICES ------------------------------ */
   const toggleService = (srv: string) => {
     const next = new Set(selectedServices);
     if (next.has(srv)) next.delete(srv);
@@ -136,38 +130,50 @@ const AdminPanel: React.FC = () => {
     setSelectedServices(new Set());
   };
 
-  /* ------------------------------ API CALLS ------------------------------ */
   const kaydet = () => {
     const rawCode = code.replace(/\s/g, "");
     if (rawCode.length !== 16) return alert("Kod 16 haneli olmalı!");
-    if (selectedServices.size === 0) return alert("En az bir hizmet seçin!");
+    if (selectedServices.size === 0) return alert("En az bir hizmet seçin.");
 
-    fetch("https://zucar-backend-ndh4.onrender.com/kaydet", {
-      method: "POST",
+    if (
+      plakaNo.trim() === "" ||
+      garantiBaslangic.trim() === "" ||
+      garantiBitis.trim() === ""
+    ) {
+      return alert("Plaka, garanti başlangıç ve bitiş tarihleri zorunludur.");
+    }
+
+    const body = {
+      plakaNo,
+      garantiBaslangic,
+      garantiBitis,
+      notlar,
+      islemler: Array.from(selectedServices),
+      custom: isCustom,
+    };
+
+    const url = editMode ? `https://zucar-backend-ndh4.onrender.com/kayit/${rawCode}` : "https://zucar-backend-ndh4.onrender.com/kaydet";
+
+    fetch(url, {
+      method: editMode ? "PUT" : "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        kod: rawCode,
-        islemler: Array.from(selectedServices),
-        custom: isCustom,
-      }),
+      body: JSON.stringify(editMode ? body : { kod: rawCode, ...body }),
     })
       .then((r) => r.json())
       .then(() => {
         setSuccessVisible(true);
         setTimeout(() => setSuccessVisible(false), 1500);
-        setIsCustom(false);                     // otomatik moda geri
+        setIsCustom(false);
         setSelectedServices(new Set());
-
-        /* input boş kalmasın — lokalde sıradaki kodu hesapla */
-        const nextLocal = calculateNextAuto([
-          [formatKod(rawCode), { islemler: [], tarih: new Date().toISOString(), custom: isCustom }],
-          ...records,
-        ]);
-        setCode(nextLocal);
-
+        setEditMode(false);
+        setCode(calculateNextAuto(records));
+        setPlakaNo("");
+        setGarantiBaslangic("");
+        setGarantiBitis("");
+        setNotlar("");
         kayitlariGetir();
       })
       .catch(() => alert("Kayıt başarısız!"));
@@ -181,49 +187,64 @@ const AdminPanel: React.FC = () => {
       .then((data) => {
         const entries = (Object.entries(data || {}) as [string, Kayit][])
           .sort((a, b) => new Date(b[1].tarih).getTime() - new Date(a[1].tarih).getTime());
-
         setRecords(entries);
-
-        /* otomatik kodu & info’yu güncelle */
         const next = calculateNextAuto(entries);
         setCode(next);
-
         if (entries.length) {
           setAutoCodeInfo(`Son kayıtlı müşteri kodu: ${entries[0][0]}`);
         }
-        
       })
       .catch((err) => console.error("Kayıtlar getirilemedi:", err));
   };
 
+  const handleEdit = (kod: string) => {
+    const kayit = records.find(([k]) => k === kod);
+    if (!kayit) return;
+    const v = kayit[1];
+    setCode(kod);
+    setIsCustom(true);
+    setEditMode(true);
+    setPlakaNo(v.plakaNo);
+    setGarantiBaslangic(v.garanti?.baslangic || "");
+    setGarantiBitis(v.garanti?.bitis || "");
+    setNotlar(v.notlar);
+    setSelectedServices(new Set(v.islemler));
+  };
+
+  const handleDelete = (kod: string) => {
+    if (!window.confirm("Bu kaydı silmek istediğinize emin misiniz?")) return;
+    fetch(`https://zucar-backend-ndh4.onrender.com/kayit/${kod}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => res.json())
+      .then(() => {
+        kayitlariGetir();
+      })
+      .catch(() => alert("Silme başarısız oldu."));
+  };
+
   const formatDateTime = (iso: string) =>
-  new Date(iso).toLocaleString("tr-TR", {
-    year:  "numeric",
-    month: "2-digit",
-    day:   "2-digit",
-    hour:  "2-digit",
-    minute:"2-digit"
+    new Date(iso).toLocaleString("tr-TR", {
+      year:  "numeric",
+      month: "2-digit",
+      day:   "2-digit",
+      hour:  "2-digit",
+      minute:"2-digit"
   });
 
-  /* ------------------------------ RENDER ------------------------------ */
+  const formatDateTimeForInsurance = (iso: string) => 
+    new Date(iso).toLocaleString("tr-TR", {
+      year:  "numeric",
+      month: "2-digit",
+      day:   "2-digit",
+    })
+  
+
   return (
     <>
-      {/* --------------------------- GLOBAL CSS --------------------------- */}
-      <style>{`
-        body {
-          background: #181818;
-          color: #fff;
-          font-family: 'Poppins', Arial, sans-serif;
-          margin: 0;
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        /* Orijinal CSS'in tamamı buraya kopyalandı (kısaltıldı) */
-      `}</style>
-
-      {/* --------------------------- LOGIN PANEL -------------------------- */}
       {!token && (
         <div className="login-panel">
           <div className="login-card">
@@ -284,7 +305,6 @@ const AdminPanel: React.FC = () => {
               checked={isCustom}
               onChange={(e) => {
                 setIsCustom(e.target.checked);
-                /* kapatınca hemen otomatiğe dön */
                 if (!e.target.checked) setCode(calculateNextAuto(records));
               }}
             />
@@ -297,6 +317,38 @@ const AdminPanel: React.FC = () => {
               <strong>{autoCodeInfo}</strong>
             </div>
           )}
+
+          <div className="form-group">
+              <label>Plaka No:</label>
+              <input
+                type="text"
+                value={plakaNo}
+                onChange={(e) => setPlakaNo(e.target.value)}
+                placeholder="34 ABC 67"
+              />
+
+              <label>Garanti Başlangıç Tarihi: (<b>ay-gün-yıl</b> cinsinden)</label>
+              <input
+                type="date"
+                value={garantiBaslangic}
+                onChange={(e) => setGarantiBaslangic(e.target.value)}
+              />
+
+              <label>Garanti Bitiş Tarihi: (<b>ay-gün-yıl</b> cinsinden)</label>
+              <input
+                type="date"
+                value={garantiBitis}
+                onChange={(e) => setGarantiBitis(e.target.value)}
+              />
+
+              <label>Notlar:</label>
+              <textarea
+                style={{fontFamily: 'Poppins'}}
+                value={notlar}
+                onChange={(e) => setNotlar(e.target.value)}
+                placeholder="Eklemek istediğiniz notlar"
+              />
+            </div>
 
           {/* ---------------------- SERVICES ---------------------- */}
           <label>Yapılan Hizmetler:</label>
@@ -345,25 +397,28 @@ const AdminPanel: React.FC = () => {
               <thead>
                 <tr>
                   <th>Kod</th>
+                  <th>Plaka</th>
+                  <th>Garanti</th>
                   <th>Hizmetler</th>
+                  <th>Notlar</th>
                   <th>Tarih</th>
-                  <th>Sorgula</th>
+                  <th>İşlemler</th>
                 </tr>
               </thead>
               <tbody>
                 {records.slice(0, 5).map(([kod, v]) => (
                   <tr key={kod}>
                     <td>{kod}</td>
+                    <td>{v.plakaNo}</td>
+                    <td>
+                      <td>{formatDateTimeForInsurance(v.garanti?.baslangic)} → {formatDateTimeForInsurance(v.garanti?.bitis)}</td>
+                    </td>
                     <td>{(v.islemler || []).join(", ")}</td>
+                    <td>{v.notlar || "-"}</td>
                     <td>{formatDateTime(v.tarih)}</td>
                     <td>
-                      <span
-                        className="kod-sorgu-link"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => window.open(`https://zucar-backend.onrender.com/kod-sorgula/${kod}`, "_blank")}
-                      >
-                        Sorgula
-                      </span>
+                      <button className="btn-edit" onClick={() => handleEdit(kod)}>Düzenle</button>
+                      <button className="btn-delete" onClick={() => handleDelete(kod)}>Sil</button>
                     </td>
                   </tr>
                 ))}
@@ -386,38 +441,49 @@ const AdminPanel: React.FC = () => {
       {modalOpen && (
         <div className="modal-overlay" onClick={() => setModalOpen(false)}>
           <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()} // içe tıklamada kapanma
+            className="modal-content fullscreen"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
               <h3>Tüm Hizmet Kayıtları</h3>
-              <button className="modal-close" onClick={() => setModalOpen(false)}>
-                ×
-              </button>
+              <button className="modal-close" onClick={() => setModalOpen(false)}>×</button>
             </div>
 
-            {/* Tam kayıt tablosu */}
-            <table className="modal-table">
-              <thead>
-                <tr>
-                  <th>Kod</th>
-                  <th>Hizmetler</th>
-                  <th>Tarih</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map(([kod, v]) => (
-                  <tr key={kod}>
-                    <td>{kod}</td>
-                    <td>{(v.islemler || []).join(", ")}</td>
-                    <td>{formatDateTime(v.tarih)}</td>
+            <div className="modal-body">
+              <table className="modal-table">
+                <thead>
+                  <tr>
+                    <th>Kod</th>
+                    <th>Plaka</th>
+                    <th>Garanti</th>
+                    <th>Hizmetler</th>
+                    <th>Notlar</th>
+                    <th>Tarih</th>
+                    <th>İşlemler</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {records.map(([kod, v]) => (
+                    <tr key={kod}>
+                      <td>{kod}</td>
+                      <td>{v.plakaNo}</td>
+                      <td>{formatDateTimeForInsurance(v.garanti?.baslangic)} → {formatDateTimeForInsurance(v.garanti?.bitis)}</td>
+                      <td>{(v.islemler || []).join(", ")}</td>
+                      <td>{v.notlar || "-"}</td>
+                      <td>{formatDateTime(v.tarih)}</td>
+                      <td>
+                        <button className="btn-edit" onClick={() => handleEdit(kod)}>Düzenle</button>
+                        <button className="btn-delete" onClick={() => handleDelete(kod)}>Sil</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
+
     </>
   );
 };
