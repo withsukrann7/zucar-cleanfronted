@@ -87,7 +87,8 @@ const KodSorgulamaBox: React.FC = () => {
       return res.json() as Promise<unknown>;  /* ✅ fetch generic yok, assert var */
     })
     .then((raw) => {
-      const { islemler = [], plakaNo, garantiBaslangic, garantiBitis, notlar } = raw as any;
+      const { islemler = [], plakaNo, garanti = {}, notlar } = raw as any;
+      const {baslangic, bitis} = garanti;
 
       const details: Record<string, string> = {
         ...(Array.isArray(islemler)
@@ -97,9 +98,9 @@ const KodSorgulamaBox: React.FC = () => {
             }, {})
           : {}),
         ...(plakaNo ? { 'Plaka': plakaNo } : {}),
-        ...(garantiBaslangic && garantiBitis
+        ...(baslangic && bitis
           ? {
-              'Garanti Süresi': `${new Date(garantiBaslangic).toLocaleDateString('tr-TR')} → ${new Date(garantiBitis).toLocaleDateString('tr-TR')}`
+              'Garanti Süresi': `${new Date(baslangic).toLocaleDateString('tr-TR')} → ${new Date(bitis).toLocaleDateString('tr-TR')}`
             }
           : {}),
         ...(notlar ? { 'Notlar': notlar } : {}),
